@@ -1,0 +1,263 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USERS ────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(PLAYER)
+  avatar       String?
+  bio          String?
+  website      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  games        Game[]
+  wishlist     Wishlist[]
+  downloads    Download[]
+  threads      ForumThread[]
+  posts        ForumPost[]
+  purchases    Purchase[]
+
+  @@map("users")
+}
+
+enum Role {
+  PLAYER
+  CREATOR
+  ADMIN
+}
+
+// ─── GAMES ────────────────────────────────────────────────────────
+
+model Game {
+  id           String      @id @default(uuid())
+  slug         String      @unique
+  title        String
+  tagline      String?
+  description  String
+  price        Float       @default(0)  // 0 = darmowa
+  currency     String      @default("PLN")
+  version      String      @default("1.0.0")
+  status       GameStatus  @default(DRAFT)
+  coverImage   String?
+  trailerUrl   String?
+  presskit     String?
+  featured     Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  authorId     String
+  author       User        @relation(fields: [authorId], references: [id])
+
+  files        GameFile[]
+  extLinks     ExtLink[]
+  platforms    GamePlatform[]
+  tags         GameTag[]
+  screenshots  Screenshot[]
+  wishlist     Wishlist[]
+  downloads    Download[]
+  purchases    Purchase[]
+
+  @@map("games")
+}
+
+enum GameStatus {
+  DRAFT
+  PUBLISHED
+  UNLISTED
+  REMOVED
+}
+
+// ─── PLATFORMS (własne pliki) ──────────────────────────────────────
+
+model GamePlatform {
+  id       String   @id @default(uuid())
+  gameId   String
+  game     Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  platform Platform
+
+  @@unique([gameId, platform])
+  @@map("game_platforms")
+}
+
+enum Platform {
+  WIN
+  MAC
+  LINUX
+  WEB
+  ANDROID
+  IOS
+  STEAM_DECK
+}
+
+// ─── PLIKI ────────────────────────────────────────────────────────
+
+model GameFile {
+  id        String   @id @default(uuid())
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  platform  Platform
+  filename  String
+  fileUrl   String   // URL do R2 / storage
+  fileSize  BigInt   // bytes
+  version   String   @default("1.0.0")
+  createdAt DateTime @default(now())
+
+  @@map("game_files")
+}
+
+// ─── ZEWNĘTRZNE LINKI (Steam, GOG, Xbox etc.) ─────────────────────
+
+model ExtLink {
+  id       String      @id @default(uuid())
+  gameId   String
+  game     Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  platform ExtPlatform
+  url      String
+  price    Float?
+  currency String?
+
+  @@unique([gameId, platform])
+  @@map("ext_links")
+}
+
+enum ExtPlatform {
+  STEAM
+  GOG
+  GOOGLE_PLAY
+  APP_STORE
+  XBOX
+  PLAYSTATION
+  ITCH
+}
+
+// ─── TAGI ────────────────────────────────────────────────────────
+
+model Tag {
+  id    String    @id @default(uuid())
+  slug  String    @unique
+  name  String
+  games GameTag[]
+
+  @@map("tags")
+}
+
+model GameTag {
+  gameId String
+  tagId  String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id])
+
+  @@id([gameId, tagId])
+  @@map("game_tags")
+}
+
+// ─── SCREENSHOTY ─────────────────────────────────────────────────
+
+model Screenshot {
+  id       String @id @default(uuid())
+  gameId   String
+  game     Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  url      String
+  order    Int    @default(0)
+
+  @@map("screenshots")
+}
+
+// ─── WISHLIST + DOWNLOADS + PURCHASES ────────────────────────────
+
+model Wishlist {
+  userId    String
+  gameId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  game      Game     @relation(fields: [gameId], references: [id])
+
+  @@id([userId, gameId])
+  @@map("wishlists")
+}
+
+model Download {
+  id        String   @id @default(uuid())
+  userId    String?
+  gameId    String
+  ip        String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+  game      Game     @relation(fields: [gameId], references: [id])
+
+  @@map("downloads")
+}
+
+model Purchase {
+  id              String   @id @default(uuid())
+  userId          String
+  gameId          String
+  amount          Float
+  currency        String   @default("PLN")
+  stripeSessionId String?  @unique
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id])
+  game            Game     @relation(fields: [gameId], references: [id])
+
+  @@map("purchases")
+}
+
+// ─── FORUM ───────────────────────────────────────────────────────
+
+model ForumCategory {
+  id          String        @id @default(uuid())
+  slug        String        @unique
+  name        String
+  description String?
+  icon        String?
+  order       Int           @default(0)
+  threads     ForumThread[]
+
+  @@map("forum_categories")
+}
+
+model ForumThread {
+  id         String        @id @default(uuid())
+  title      String
+  slug       String        @unique
+  pinned     Boolean       @default(false)
+  locked     Boolean       @default(false)
+  views      Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  categoryId String
+  category   ForumCategory @relation(fields: [categoryId], references: [id])
+  authorId   String
+  author     User          @relation(fields: [authorId], references: [id])
+  posts      ForumPost[]
+
+  @@map("forum_threads")
+}
+
+model ForumPost {
+  id        String      @id @default(uuid())
+  content   String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  threadId  String
+  thread    ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User        @relation(fields: [authorId], references: [id])
+
+  @@map("forum_posts")
+}
